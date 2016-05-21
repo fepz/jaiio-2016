@@ -140,13 +140,13 @@ def graph1(data, fus):
     plt.close(fig)
 
 
-def graph2(data, fus, colors):
+def analyze_data(data):
     results_ends = {}
     results_starts = {}
     results_exec = {}
     results_wcrt = {}
     results_scheds = {}
-    #results_faults = {}
+    # results_faults = {}
 
     # Group by task
     for task, task_group in data.groupby(["task"]):
@@ -178,10 +178,11 @@ def graph2(data, fus, colors):
                 starts = rts_group.values[0][6:][::2]
                 ends = rts_group.values[0][6:][1::2]
 
+                # if the test has less than 300 samples, print a warning -- and compute only the first 30 samples
                 if ends[-1] == 0:
                     ends = ends[:30]
                     starts = starts[:30]
-                    print("task {0} of rts {1} with 30 instances.".format(task, rts))
+                    print("warning: task {0} of rts {1} with 30 instances.".format(task, rts))
 
                 schedulable = 0
                 for x in range(len(ends)):
@@ -212,14 +213,22 @@ def graph2(data, fus, colors):
                 task_exec_jitter.append(np.mean(jitter_exec))
                 task_wcrt.append(np.mean(jitter_wcrt))
 
-            results_ends[task][fu] = (np.mean(task_end_jitter), np.max(task_end_jitter), np.min(task_end_jitter),
-                                      np.std(task_end_jitter))
-            results_starts[task][fu] = (np.mean(task_start_jitter), np.max(task_start_jitter), np.min(task_start_jitter),
-                                        np.std(task_start_jitter))
-            results_exec[task][fu] = (np.mean(task_exec_jitter), np.max(task_exec_jitter), np.min(task_exec_jitter),
-                                        np.std(task_exec_jitter))
+            results_ends[task][fu] = (np.mean(task_end_jitter), np.max(task_end_jitter), np.min(task_end_jitter), np.std(task_end_jitter))
+            results_starts[task][fu] = (np.mean(task_start_jitter), np.max(task_start_jitter), np.min(task_start_jitter), np.std(task_start_jitter))
+            results_exec[task][fu] = (np.mean(task_exec_jitter), np.max(task_exec_jitter), np.min(task_exec_jitter), np.std(task_exec_jitter))
             results_wcrt[task][fu] = (np.mean(task_wcrt), np.max(task_wcrt), np.min(task_wcrt), np.std(task_wcrt))
             results_scheds[task][fu] = task_scheds
+
+    # return dict with results
+    return {"ends":results_ends, "starts":results_starts, "exec":results_exec, "wcrt":results_wcrt, "scheds":results_scheds}
+
+
+def graph2(results, fus, colors):
+    results_ends = results["ends"]
+    results_starts = results["starts"]
+    results_exec = results["exec"]
+    results_wcrt = results["wcrt"]
+    results_scheds = results["scheds"]
 
     fig, ax = plt.subplots(1, 1)
     ax.margins(0.5, 0.5)
@@ -304,6 +313,7 @@ def analyze_task(data):
             wcet_l = []
             wcrt_l = []
             wcrt_lmax = []
+
             for rts, rts_group in task_group.groupby(["rts"]):
                 # period
                 period = rts_group.iloc[0]["t"]
@@ -329,9 +339,8 @@ def analyze_task(data):
 
 
 def main():
-    rts_data_dump_file = "n5rtsdata.dump"
-    dump_file = "n5.dump"
-    dump_sched_file = "n5sched.dump"
+    rts_data_dump_file = "n5rtsdata.dump"  # rts info
+    dump_file = "n5.dump"  # test results
 
     if not os.path.isfile(dump_file):
         if not os.path.isfile(rts_data_dump_file):
@@ -352,180 +361,11 @@ def main():
         with open(dump_file, "rb") as infile:
             data = pickle.load(infile)
 
-    with open("n5sched.dump", "rb") as infile:
-        data_sched = pickle.load(infile)
-
-
-
-    #with open("n5melted.dump", "wb") as outfile:
-    #    pickle.dump(data2, outfile)
-
-    #with open("n5sched_melt.dump", "wb") as outfile:
-    #    pickle.dump(data2, outfile)
-
-    # por cada str, sacar media, max y min, y dividir por el periodo de la tarea
-    # luego, sacar media de los promedios -- y max, min (ya estarian normalizados)
-
-    # rts = data2[(data2["rts"] == 663) & (data2["fu"] == 30) & (data2["task"] == 2) & (data2["variable"] == "e")]
-    # period = rts.iloc[0]["t"]
-    # ends = rts["value"].values
-    # print(ends)
-    # jitter = []
-    # for idx in range(1, len(ends)):
-    #     jitter.append((np.abs((ends[idx] - ends[idx - 1]) - period)) / period)
-    # print(jitter)
-    # print(period, np.mean(jitter), np.max(jitter), np.min(jitter))
-
-    ########
-
-    # results = []
-    # max = []
-    # for rts, rts_group in data2[(data2["fu"] == 30) & (data2["task"] == 2) & (data2["variable"] == "e")].groupby(["rts"]):
-    #     print("-- {0} --".format(rts))
-    #     period = rts_group.iloc[0]["t"]
-    #     ends = rts_group["value"].values
-    #     print(ends)
-    #     jitter = []
-    #     for idx in range(1, len(ends)):
-    #         #jitter.append((ends[idx] - ends[idx - 1]))
-    #         #jitter.append(np.abs(ends[idx] - ends[idx - 1]) - period)
-    #         jitter.append((np.abs((ends[idx] - ends[idx - 1]) - period)) / period)
-    #     #print(jitter)
-    #     #print(period, np.mean(jitter), np.max(jitter), np.min(jitter))
-    #     #jitter /= period
-    #     print(jitter)
-    #     print(period, np.mean(jitter), np.max(jitter), np.min(jitter))
-    #     results.append(np.mean(jitter))
-    #     if np.mean(jitter) > 1:
-    #         max.append(rts)
-    # print(len(results))
-    # print(np.mean(results), np.max(results), np.min(results), np.std(results))
-    # print(max)
-
-    ########
-
     fus = range(10, 100, 5)
     colors = ["r", "g", "b", "k", "y", "m", "c"]
 
-    graph2(data, fus, colors)
+    graph2(analyze_data(data), fus, colors)
     #analyze_task(data)
-
-    #
-    # fig, ax = plt.subplots(1, 1)
-    # ax.margins(0.5, 0.5)
-    # ax.set_xlabel('fu')
-    # ax.set_ylabel('j')
-    # ax.set_xlim([0, 100])
-    # plt.xticks(fus, [str(fu) for fu in fus])
-    #
-    # for task, task_group in data2.groupby(["task"]):
-    #     means = []
-    #
-    #     for fu, fu_group in task_group.groupby(["fu"]):
-    #         ends = fu_group[(fu_group["variable"] == "e")]["value"].values
-    #         jitter = []
-    #         for idx in range(1, len(ends)):
-    #             jitter.append(ends[idx] - ends[idx - 1])
-    #         means.append(np.mean(jitter))
-    #
-    #     ax.plot(fus, means, str(colors[task]), label=str(task))
-    #
-    # ax.legend(numpoints=1, loc="best", prop={'size': 9})
-    # plt.savefig("test2.png", bbox_inches="tight")
-    # plt.close(fig)
-
-    ######
-
-    # fig, ax = plt.subplots(1, 1)
-    # ax.margins(0.5, 0.5)
-    # ax.set_xlabel('fu')
-    # ax.set_ylabel('j')
-    # ax.set_xlim([0, 100])
-    # plt.xticks(fus, [str(fu) for fu in fus])
-    #
-    # for task, task_group in data2.groupby(["task"]):
-    #     means = []
-    #
-    #     for fu, fu_group in task_group.groupby(["fu"]):
-    #
-    #         mean_fu = []
-    #
-    #         for rts, rts_group in fu_group.groupby(["rts"]):
-    #             period = rts_group.iloc[0]["t"]
-    #
-    #             ends = rts_group[(rts_group["variable"] == "e")]["value"].values
-    #
-    #             jitter = []
-    #             for idx in range(1, len(ends)):
-    #                 jitter.append((ends[idx] - ends[idx - 1]) / period)
-    #
-    #             mean_fu.append(np.mean(jitter))
-    #
-    #         means.append(np.mean(mean_fu) * 100)
-    #
-    #     ax.plot(fus, means, str(colors[task]), label=str(task))
-    #
-    # ax.legend(numpoints=1, loc="best", prop={'size': 9})
-    # plt.savefig("test3.png", bbox_inches="tight")
-    # plt.close(fig)
-
-    ######
-
-    # fig, ax = plt.subplots(1, 1)
-    # ax.margins(0.5, 0.5)
-    # ax.set_xlabel('i')
-    # ax.set_ylabel('j')
-    #
-    # for task, task_group in data2[data2["fu"] == 90].groupby(["task"]):
-    #
-    #     means_i = []
-    #
-    #     for rts, rts_group in task_group.groupby(["rts"]):
-    #         period = rts_group.iloc[0]["t"]
-    #
-    #         ends = rts_group[(rts_group["variable"] == "e")]["value"].values
-    #
-    #         jitter = []
-    #         for idx in range(1, len(ends)):
-    #             jitter.append((ends[idx] - ends[idx - 1]) / period)
-    #
-    #         means_i.append(np.mean(jitter))
-    #
-    #     ax.plot(range(100), means_i, str(colors[task]), label=str(task))
-    #
-    # ax.legend(numpoints=1, loc="best", prop={'size': 9})
-    # plt.savefig("test4.png", bbox_inches="tight")
-    # plt.close(fig)
-
-    ######
-
-
-
-    ######
-
-    ######
-
-    #for task, task_group in data2.groupby(["task"]):
-    #    for fu, fu_group in task_group.groupby(["fu"]):
-    #        #for var, var_group in fu_group.groupby(["variable"]):
-    #        d = fu_group.groupby(["variable"]).agg([np.mean])
-    #        print(d)
-
-    # fig, ax = plt.subplots(1, 1)
-    # ax.margins(0.5, 0.5)
-    # ax.set_xlabel('Frequency')
-    # ax.set_ylabel('Perturbation (\%)')
-    # ax.set_xlim([0, 100])
-    # plt.xticks(fus, [str(fu) for fu in fus])
-    #
-    # for fu, fu_group in data2.groupby(["task"]):
-    #     fu_task_group = fu_group.groupby(["fu"])
-    #     d = fu_task_group["t"].agg([np.mean, np.max, np.min])
-    #     ax.plot(fus, d["mean"].values, str(colors[fu]), label=str(fu))
-    #
-    # ax.legend(numpoints=1, loc="best", prop={'size': 9})
-    # plt.savefig("test.png", bbox_inches="tight")
-    # plt.close(fig)
 
 
 if __name__ == '__main__':
