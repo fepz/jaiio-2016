@@ -1,5 +1,4 @@
 import os
-import numpy as np
 import sys
 import pickle
 import pandas as pd
@@ -7,10 +6,11 @@ import glob
 import pyparsing as pyp
 import ntpath
 import re
+from argparse import ArgumentParser
 
 
-def get_periods(path=None, fu=None):
-    c_files = glob.glob("{0}/rtts_u*_n5_*.cpp".format("C:/Users/fep/Documents/src/cayssials2016/n5/u90/new"))
+def get_rts_info(path=None, fu=None):
+    c_files = glob.glob("{0}/rtts_u*_n*_*.cpp".format(path))
 
     macrodef1 = "#define TASK_" + pyp.Word(pyp.nums) + "_PERIOD" + pyp.empty + pyp.restOfLine.setResultsName("value")
     macrodef2 = "#define TASK_" + pyp.Word(pyp.nums) + "_WCET" + pyp.empty + pyp.restOfLine.setResultsName("value")
@@ -23,7 +23,6 @@ def get_periods(path=None, fu=None):
         rts_data = [int(s) for s in re.findall('\d+', ntpath.basename(file))]
 
         with open(file, 'r') as f:
-            print("Processing {0}".format(file))
             line = f.read()
             res1 = macrodef1.scanString(line)
             res2 = macrodef2.scanString(line)
@@ -45,51 +44,58 @@ def get_periods(path=None, fu=None):
     return pd.DataFrame(result, columns=["fu", "taskcnt", "rts", "task", "t", "c"], dtype=int)
 
 
-def get_mbedata():
-    # Files with mbed samples data
-    path_5 = "C:/Users/fep/Documents/src/cayssials2016/n5/u90/new/results.txt"
-    path_7 = "C:\\Users\\fep\\Documents\\src\\cayssials2016\\n7\\total\\resultados_total.txt"
-    path_10 = "C:\\Users\\fep\\Documents\\src\\cayssials2016\\n10\\total\\resultados_n10_total.txt"
-    paths = [("n5", path_5)]  # , ("n7", path_7), ("n10", path_10)]
-
-    #rts_info = get_periods()
-
+def get_mbed_data(result_file):
     # verify that the files exists
-    for _, path in paths:
-        if not os.path.isfile(path):
-            print("Can't find {0} file.".format(path))
-            sys.exit(1)
+    if not os.path.isfile(result_file):
+        print("Can't find {0} file.".format(result_file))
+        sys.exit(1)
 
     columns_names = ["fu", "taskcnt", "rts", "task"]
     for i in range(300):
         columns_names.append("s")
         columns_names.append("e")
 
-    for idx, path in paths:
-        # Load the data into a DataFrame
-        data = pd.read_csv(path, sep='\t', dtype=int)
-        data.columns = columns_names
+    # Load the data into a DataFrame
+    data = pd.read_csv(result_file, sep='\t', dtype=int)
+    data.columns = columns_names
 
     return data
 
 
+def get_args():
+    """ Command line arguments """
+    parser = ArgumentParser(description="Generate dump file")
+    parser.add_argument("result_file", help="Result file name", type=str)
+    parser.add_argument("cpp_path", help="Directory with C files", type=str)
+    parser.add_argument("dump_file", help="Dump file name", type=str)
+    return parser.parse_args()
+
+
 def main():
-    rts_data_dump_file = "n5rtsdata.dump"  # rts info
-    dump_file = "n5.dump"  # test results
+    args = get_args()
+    dump_file = args.dump_file
 
     if not os.path.isfile(dump_file):
+        rts_data_dump_file = os.path.splitext(dump_file)[0] + "_rts_data.dump"
+
+        # Load RTS info (periods and wcets)
         if not os.path.isfile(rts_data_dump_file):
-            rts_info = get_periods()
+            if os.path.isdir(args.cpp_path):
+                rts_info = get_rts_info(args.cpp_path)
+            else:
+                print("Directory {0} not found.".format(args.cpp_path))
+
             with open(rts_data_dump_file, "wb") as outfile:
                 pickle.dump(rts_info, outfile)
         else:
             with open(rts_data_dump_file, "rb") as outfile:
                 rts_info = pickle.load(outfile)
 
-        mbed_data = get_mbedata()
+        # Load mbed data results and merge with RTS info
+        mbed_data = get_mbed_data(args.result_file)
         data = pd.merge(rts_info, mbed_data, on=["fu", "taskcnt", "rts", "task"])
 
-        # save DataFrame to file
+        # save results into file
         with open(dump_file, "wb") as outfile:
             pickle.dump(data, outfile)
     else:
