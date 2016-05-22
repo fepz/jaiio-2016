@@ -34,9 +34,13 @@ def get_periods(path=None, fu=None):
             print("Can't find tasks wcet values in file {0}.".format(file))
             continue
 
-        for id, task in enumerate(zip(periods, wcet)):
+        if not periods:
+            print("Can't find task period values in file {0}.".format(file))
+            continue
+
+        for idx, task in enumerate(zip(periods, wcet)):
             t, c = task[0], task[1]
-            result.append([rts_data[0], rts_data[1], rts_data[2], id, t, c])
+            result.append([rts_data[0], rts_data[1], rts_data[2], idx, t, c])
 
     return pd.DataFrame(result, columns=["fu", "taskcnt", "rts", "task", "t", "c"], dtype=int)
 
