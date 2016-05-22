@@ -1,7 +1,7 @@
-from __future__ import print_function
 import os
 import sys
 import pickle
+import pandas as pd
 
 
 def main():
@@ -16,6 +16,7 @@ def main():
         data = pickle.load(infile)
 
     results = {}
+    results2 = []
 
     # Group by fu
     for fu, fu_group in data.groupby(["fu"]):
@@ -26,6 +27,8 @@ def main():
 
         # Group by rts
         for rts, rts_group in fu_group.groupby(["rts"]):
+
+            rts_sched = 0
 
             # Now group by task
             for task, task_group in rts_group.groupby(["task"]):
@@ -39,11 +42,20 @@ def main():
                     if abs_deadline < mbed_samples_end[x]:
                         print("Task {0} is not schedulable for RTS {1}, FU {2}: {3} / {4}".format(task, rts, fu, mbed_samples_end[x], abs_deadline))
                         schedulable = 1
+                        if rts_sched == 0:
+                            rts_sched = 1
                         break
 
-                results[fu][schedulable] += 1
+                #results[fu][schedulable] += 1
+                results2.append((fu, rts, task, schedulable))
+
+            results[fu][rts_sched] += 1
 
     print(results)
+
+    #df2 = pd.DataFrame(results2, columns=["fu", "rts", "task", "schedulable"])
+    #with open("n5sched.dump", "wb") as infile:
+    #    pickle.dump(df2, infile)
 
 
 if __name__ == '__main__':
