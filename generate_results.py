@@ -82,6 +82,7 @@ def analyze_data(data):
     results_wcrt = {}
     results_scheds = {}
     results_distanced = {}
+    results_distanced2 = {}
 
     # Group by task
     for task, task_group in data.groupby(["task"]):
@@ -94,6 +95,7 @@ def analyze_data(data):
         results_wcrt[task] = {}
         results_scheds[task] = {}
         results_distanced[task] = {}
+        results_distanced2[task] = {}
 
         # Group by fu
         for fu, fu_group in task_group.groupby(["fu"]):
@@ -104,6 +106,7 @@ def analyze_data(data):
             task_wcrt = []
             task_scheds = [0, 0]
             task_distanced = []
+            task_distanced2 = []
 
             # Now group by rts
             for rts, rts_group in fu_group.groupby(["rts"]):
@@ -139,22 +142,25 @@ def analyze_data(data):
                 jitter_exec = []
                 jitter_wcrt = []
                 distance_to_d = []
+                distance_to_d2 = []
 
                 for idx in range(1, len(ends)):
                     jitter_end.append((np.abs((ends[idx] - ends[idx - 1]) - period)) / period)
                     jitter_start.append((np.abs((starts[idx] - starts[idx - 1]) - period)) / period)
                     jitter_exec.append((np.abs(ends[idx] - starts[idx]) - wcet) / wcet)
-                    jitter_wcrt.append((np.abs(ends[idx] - ((idx - 1) * period))))
+                    jitter_wcrt.append((np.abs(ends[idx] - ((idx - 1) * period))))                    
                     
                 for idx in range(len(ends)):
                     abs_deadline = (idx + 1) * period
-                    distance_to_d.append(np.abs(abs_deadline - ends[idx]))                
+                    distance_to_d.append(np.abs(abs_deadline - ends[idx]) / period)
+                    distance_to_d2.append(np.abs(ends[idx] - (idx * period)) / period)
 
                 task_end_jitter.append(np.mean(jitter_end))
                 task_start_jitter.append(np.mean(jitter_start))
                 task_exec_jitter.append(np.mean(jitter_exec))
                 task_wcrt.append(np.mean(jitter_wcrt))
                 task_distanced.append(np.mean(distance_to_d))
+                task_distanced2.append(np.mean(distance_to_d2))
 
             results_ends[task][fu] = (np.mean(task_end_jitter), np.max(task_end_jitter), np.min(task_end_jitter), np.std(task_end_jitter))
             results_starts[task][fu] = (np.mean(task_start_jitter), np.max(task_start_jitter), np.min(task_start_jitter), np.std(task_start_jitter))
@@ -162,16 +168,17 @@ def analyze_data(data):
             results_wcrt[task][fu] = (np.mean(task_wcrt), np.max(task_wcrt), np.min(task_wcrt), np.std(task_wcrt))
             results_scheds[task][fu] = task_scheds
             results_distanced[task][fu] = (np.mean(task_distanced), np.max(task_distanced), np.min(task_distanced), np.std(task_distanced))
+            results_distanced2[task][fu] = (np.mean(task_distanced2), np.max(task_distanced2), np.min(task_distanced2), np.std(task_distanced2))
 
             #if task_scheds[0] >= 1000:
             #    break
 
-    for task, fu_results in results_scheds.items():
-        for fu, fur in fu_results.items():
-            print(task, fu, fur)                    
+    #for task, fu_results in results_scheds.items():
+    #    for fu, fur in fu_results.items():
+    #        print(task, fu, fur)                    
 
     # return dict with results
-    return {"ends":results_ends, "starts":results_starts, "exec":results_exec, "wcrt":results_wcrt, "scheds":results_scheds, "distanced":results_distanced}
+    return {"ends":results_ends, "starts":results_starts, "exec":results_exec, "wcrt":results_wcrt, "scheds":results_scheds, "distanced":results_distanced, "distanced2": results_distanced2}
 
 
 def graph2(results, fus, colors):
@@ -181,6 +188,7 @@ def graph2(results, fus, colors):
     results_wcrt = results["wcrt"]
     results_scheds = results["scheds"]
     results_distanced = results["distanced"]
+    results_distanced2 = results["distanced2"]
 
     fig, ax = plt.subplots(1, 1)
     ax.margins(0.5, 0.5)
@@ -256,6 +264,38 @@ def graph2(results, fus, colors):
     ax.legend(numpoints=1, loc="best", prop={'size': 9})
     plt.savefig("test5distanced.pdf", bbox_inches="tight")
     plt.close(fig)
+    
+    from matplotlib.backends.backend_pdf import PdfPages
+    with PdfPages('test5distanced2.pdf') as pdf:            
+        for task, taskr in results_distanced2.items():
+            #fig, ax = plt.subplots(1, 1)
+            plt.figure()
+            plt.margins(0.5, 0.5)
+            plt.xlabel('fu')
+            plt.ylabel('j')
+            plt.xlim([5, 100])
+            plt.ylim([0, 1])
+            plt.xticks(fus, [str(fu) for fu in fus])
+        
+            fu_list = []
+            fu_max_list = []
+            fu_min_list = []
+            e = []
+            
+            for fu, fur in sorted(taskr.items(), key=lambda f: f[0]):
+                fu_list.append(fur[0])
+                fu_max_list.append(fur[1])
+                fu_min_list.append(fur[2])
+                e.append(fur[3])
+            
+            plt.plot(fus, fu_list, "b", label="Task {0} mean".format(task))
+            plt.plot(fus, fu_max_list, "r", label="Task {0} max".format(task))
+            plt.plot(fus, fu_min_list, "g", label="Task {0} min".format(task))
+            plt.errorbar(fus, fu_list, e, linestyle='None')
+            
+            plt.legend(numpoints=1, loc="best", prop={'size': 9})            
+            pdf.savefig()  # saves the current figure into a pdf page
+            plt.close()                    
 
     fig, ax = plt.subplots(1, 1)
     ax.margins(0.5, 0.5)
@@ -277,10 +317,13 @@ def analyze_task(data):
     for fu, fu_group in data.groupby(["fu"]):
         print("fu ", fu)
         
+        task_periods = []
+        
         for task, task_group in fu_group.groupby(["task"]):
             wcet_l = []
             wcrt_l = []
             wcrt_lmax = []
+            periods_list = []
 
             for rts, rts_group in task_group.groupby(["rts"]):
                 # period
@@ -313,8 +356,9 @@ def analyze_task(data):
                 wcet_l.append(wcet)
                 wcrt_l.append(np.mean(wcrt_l2))
                 wcrt_lmax.append(np.max(wcrt_l2))
+                periods_list.append(period)
 
-            print("Task ", task, len(wcet_l), " -- ", np.mean(wcet_l), np.max(wcet_l), np.std(wcet_l), " -- ", np.mean(wcrt_l), np.max(wcrt_lmax))
+            print("Task ", task, len(wcet_l), " -- ", np.mean(wcet_l), np.max(wcet_l), np.std(wcet_l), " -- ", np.mean(wcrt_l), np.max(wcrt_lmax), "--", np.mean(periods_list), np.max(periods_list))
 
 
 def get_args():
@@ -341,8 +385,11 @@ def main():
     colors = ["r", "g", "b", "k", "y", "m", "c"]
 
     data = pd.concat(dump_files_dataframes)
+    
+    result = analyze_data(data)
 
-    graph2(analyze_data(data), fus, colors)
+    graph2(result, fus, colors)
+    
     #analyze_task(data)
 
 
