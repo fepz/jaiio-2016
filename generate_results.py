@@ -76,27 +76,41 @@ def graph1(data, fus):
 
 
 def analyze_c_t(data):
-    # Group by fu
-    for fu, fu_group in data.groupby(["fu"]):
-        print("fu", fu)
+    from matplotlib.backends.backend_pdf import PdfPages
+    with PdfPages('test5ct.pdf') as pdf:
 
-        # Group by task
-        for task, task_group in fu_group.groupby(["task"]):
-            period_l = []
-            wcet_l = []
+        fig, ax = plt.subplots(1, 1)
+        ax.margins(0.5, 0.5)
+        ax.set_xlabel('wcet')
+        ax.set_ylabel('t')
 
-            # Now group by rts
-            for rts, rts_group in task_group.groupby(["rts"]):
-                # period
-                period = rts_group.iloc[0]["t"]
-                wcet = rts_group.iloc[0]["c"]
+        # Group by fu
+        for fu, fu_group in data.groupby(["fu"]):
+            print("fu", fu)
 
-                period_l.append(period)
-                wcet_l.append(wcet)
+            # Group by task
+            for task, task_group in fu_group.groupby(["task"]):
+                period_l = []
+                wcet_l = []
 
-            print("task", task)
-            print(np.mean(wcet_l), np.max(wcet_l), np.min(wcet_l), np.mean(period_l), np.max(period_l), np.min(period_l))
-            print(np.max(wcet_l), period_l(np.argmax(wcet_l)))  # supuestamente nos tiene que dar el periodo de esta tarea
+                # Now group by rts
+                for rts, rts_group in task_group.groupby(["rts"]):
+                    # period
+                    period = rts_group.iloc[0]["t"]
+                    wcet = rts_group.iloc[0]["c"]
+
+                    period_l.append(period)
+                    wcet_l.append(wcet)
+
+                print("task", task)
+                print(np.mean(wcet_l), np.max(wcet_l), np.min(wcet_l), np.mean(period_l), np.max(period_l), np.min(period_l))
+                print(np.max(wcet_l), period_l[np.argmax(wcet_l)])  # supuestamente nos tiene que dar el periodo de esta tarea
+
+                plt.title("Task {0}, FU {0}".format(task, fu))
+                plt.scatter(wcet_l, period_l)
+
+                pdf.savefig()  # saves the current figure into a pdf page
+                plt.close()
 
 
 def analyze_data(data):
