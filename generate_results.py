@@ -75,6 +75,30 @@ def graph1(data, fus):
     plt.close(fig)
 
 
+def analyze_c_t(data):
+    # Group by fu
+    for fu, fu_group in data.groupby(["fu"]):
+        print("fu", fu)
+
+        # Group by task
+        for task, task_group in fu_group.groupby(["task"]):
+            period_l = []
+            wcet_l = []
+
+            # Now group by rts
+            for rts, rts_group in task_group.groupby(["rts"]):
+                # period
+                period = rts_group.iloc[0]["t"]
+                wcet = rts_group.iloc[0]["c"]
+
+                period_l.append(period)
+                wcet_l.append(wcet)
+
+            print("task", task)
+            print(np.mean(wcet_l), np.max(wcet_l), np.min(wcet_l), np.mean(period_l), np.max(period_l), np.min(period_l))
+            print(np.max(wcet_l), period_l(np.argmax(wcet_l)))  # supuestamente nos tiene que dar el periodo de esta tarea
+
+
 def analyze_data(data):
     results_ends = {}
     results_starts = {}
