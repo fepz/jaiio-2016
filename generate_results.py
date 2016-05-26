@@ -276,6 +276,7 @@ def graph2(results, fus, colors):
             plt.xlim([5, 100])
             plt.ylim([0, 1])
             plt.xticks(fus, [str(fu) for fu in fus])
+            plt.title('Task {0}'.format(task + 1))
         
             fu_list = []
             fu_max_list = []
@@ -288,9 +289,9 @@ def graph2(results, fus, colors):
                 fu_min_list.append(fur[2])
                 e.append(fur[3])
             
-            plt.plot(fus, fu_list, "b", label="Task {0} mean".format(task))
-            plt.plot(fus, fu_max_list, "r", label="Task {0} max".format(task))
-            plt.plot(fus, fu_min_list, "g", label="Task {0} min".format(task))
+            plt.plot(fus, fu_list, "b", label="mean")
+            plt.plot(fus, fu_max_list, "r", label="max")
+            plt.plot(fus, fu_min_list, "g", label="min")
             plt.errorbar(fus, fu_list, e, linestyle='None')
             
             plt.legend(numpoints=1, loc="best", prop={'size': 9})            
