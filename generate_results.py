@@ -76,6 +76,9 @@ def graph1(data, fus):
 
 
 def analyze_c_t(data):
+    plt.rc('text', usetex=True)
+    plt.rc('font', family='serif')
+
     from matplotlib.backends.backend_pdf import PdfPages
     with PdfPages('test5ct.pdf') as pdf:
 
