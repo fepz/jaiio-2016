@@ -3,477 +3,287 @@ import numpy as np
 import pickle
 import pandas as pd
 import matplotlib.pyplot as plt
+from collections import defaultdict
 from argparse import ArgumentParser
 from tabulate import tabulate
 
 
-def graph1(data, fus):
-    data_melted = pd.melt(data, id_vars=["fu", "taskcnt", "rts", "task", "t", "c"])
+def analyze_data(data):
+        
+    def calculate_task_data(row):
+        period = row["t"]
+        wcet = row["c"]
+        
+        task_valid_fu = 0
+        if (wcet / period) > (((row['fu'] / 100) * 35.0) / 100.0):
+            task_valid_fu = 1
+            
+        # Finalization and start times of the task releases
+        starts = row.values[6::2]
+        ends = row.values[7::2]
 
-    fig, ax = plt.subplots(1, 1)
-    ax.margins(0.5, 0.5)
-    ax.set_xlabel('fu')
-    ax.set_ylabel('j')
-    ax.set_xlim([5, 100])
-    ax.set_ylim([0, .25])
-    plt.xticks(fus, [str(fu) for fu in fus])
+        # If the test has less than 300 samples, print a warning -- and compute only the first 30 samples
+        if ends[-1] == 0:
+            ends = ends[:30]
+            starts = starts[:30]
+            print("warning: task {0} of rts {1} with 30 instances.".format(row["task"], row["rts"]))
 
-    result_print = {}
+        # If the task is not schedulable, mark the task-set as non-valid and skip it
+        task_schedulable = 0
+        for x in range(len(ends)):
+            abs_deadline = (x + 1) * period
+            if abs_deadline < ends[x]:
+                task_schedulable = 1
+                break
+    
+        # The task is schedulable and valid, so compute the results
+        jitter_end = []
+        jitter_start = []
+        jitter_exec = []
+        jitter_wcrt = []
+        distance_to_d = []
+        distance_to_d2 = []
 
-    for task, task_group in data_melted.groupby(["task"]):
-        means = []
+        for idx in range(1, len(ends)):
+            jitter_end.append((np.abs((ends[idx] - ends[idx - 1]) - period)) / period)
+            jitter_start.append((np.abs((starts[idx] - starts[idx - 1]) - period)) / period)
+            jitter_exec.append((np.abs(ends[idx] - starts[idx]) - wcet) / wcet)
+            jitter_wcrt.append((np.abs(ends[idx] - ((idx - 1) * period))))                    
+            
+        for idx in range(len(ends)):
+            abs_deadline = (idx + 1) * period
+            distance_to_d.append(np.abs(abs_deadline - ends[idx]) / period)
+            distance_to_d2.append(np.abs(ends[idx] - (idx * period)) / period)
 
-        result_print[task] = []
+        # Add task's results to the task-set result list
+        return pd.Series([np.mean(jitter_end), np.mean(jitter_start), np.mean(jitter_exec), np.mean(jitter_wcrt), 
+                np.mean(distance_to_d), np.mean(distance_to_d2), wcet / period, task_schedulable, task_valid_fu])
 
-        for fu, fu_group in task_group.groupby(["fu"]):
+    # Calculate task values and insert as new columns
+    data[['jitter_end', 'jitter_start', 'jitter_exec', 'jitter_wcrt', 'distanced', 'distanced2', 'task_fu', 'task_schedulable', 'task_valid_fu']] = data.apply(calculate_task_data, axis=1)
+    
+    # Filter task-sets that are not schedulable and have valid task uf
+    df = data.groupby(['fu', 'rts']).filter(lambda x: (sum(x['task_schedulable']) == 0) and (sum(x['task_valid_fu']) == 0))
+    
+    return df
+    
+    
+def plot_results(df, prefix):
+    # Plots ###
+    fus = range(10, 100, 5)
+    colors = ["r", "g", "b", "k", "y", "m", "c"]
 
-            print("Processing Task {0}, U{1}...".format(task, fu))
-
-            mean_fu = []
-
-            for rts, rts_group in fu_group.groupby(["rts"]):
-
-                if rts == 663:
-                    continue  # fault
-
-                period = rts_group.iloc[0]["t"]
-
-                ends = rts_group[(rts_group["variable"] == "e")]["value"].values
-
-                # if there is a missed deadline, use the absolute deadline as end value
-                # for x in range(len(ends)):
-                #     abs_deadline = (x + 1) * period
-                #     if abs_deadline < ends[x]:
-                #         ends[x] = abs_deadline
-
-                # if there is a missed deadline, skip this task group
-                # for x in range(len(ends)):
-                #     abs_deadline = (x + 1) * period
-                #     if abs_deadline < ends[x]:
-                #         continue
-
-                jitter = []
-                for idx in range(1, len(ends)):
-                    jitter.append((np.abs((ends[idx] - ends[idx - 1]) - period)) / period)
-
-                mean_fu.append(np.mean(jitter))
-
-            means.append(np.mean(mean_fu))
-
-            # fu, mean, max, min, std
-            result_print[task].append((fu, np.mean(mean_fu), np.max(mean_fu), np.min(mean_fu), np.std(mean_fu)))
-
-        # ax.plot(fus, means, str(colors[task]), label="Task {0}".format(task))
-        ax.plot(fus, means, "k", label="Task {0}".format(task))
-
-    for k, v in result_print.items():
-        print("Task ", k)
-        print(tabulate(v, ["fu", "mean", "max", "min", "std"]))
-
-    ax.legend(numpoints=1, loc="best", prop={'size': 9})
-    plt.savefig("test5.pdf", bbox_inches="tight")
-    plt.close(fig)
-
-
-def analyze_c_t2(data):
-    from matplotlib.backends.backend_pdf import PdfPages
-    with PdfPages('test5ct.pdf') as pdf:
-
-        # Group by fu
-        for fu, fu_group in data.groupby(["fu"]):
-            print("fu", fu)
-
-            # Group by task
-            for task, task_group in fu_group.groupby(["task"]):
-                period_l = []
-                wcet_l = []
-
-                fig, ax = plt.subplots(1, 1)
-                ax.margins(0.5, 0.5)
-                ax.set_xlabel('wcet')
-                ax.set_ylabel('t')
-
-                # Now group by rts
-                for rts, rts_group in task_group.groupby(["rts"]):
-                    # period
-                    period = rts_group.iloc[0]["t"]
-                    wcet = rts_group.iloc[0]["c"]
-
-                    if (wcet / period) <= ((fu * 30.0) / 100.0):
-                        period_l.append(period)
-                        wcet_l.append(wcet)
-
-                ax.set_xlim([0, np.max(wcet_l)])
-                ax.set_ylim([0, np.max(period_l)])
-
-                title = "Task {0}, FU {1}".format(task, fu)
-                plt.title(title)
-                ax.scatter(wcet_l, period_l)
-
-                pdf.savefig()  # saves the current figure into a pdf page
-                plt.close(fig)
-
-
-def analyze_c_t(data):
     plt.rc('text', usetex=True)
     plt.rc('font', family='serif')
-
-    from matplotlib.backends.backend_pdf import PdfPages
-    with PdfPages('test5ct.pdf') as pdf:
-
-        # Group by fu
-        for fu, fu_group in data.groupby(["fu"]):
-            print("fu", fu)
-
-            # Group by task
-            for task, task_group in fu_group.groupby(["task"]):
-                period_l = []
-                wcet_l = []
-                
-                fig, ax = plt.subplots(1, 1)
-                ax.margins(0.5, 0.5)
-                ax.set_xlabel('wcet')
-                ax.set_ylabel('t')        
-
-                # Now group by rts
-                for rts, rts_group in task_group.groupby(["rts"]):
-                    # period
-                    period = rts_group.iloc[0]["t"]
-                    wcet = rts_group.iloc[0]["c"]
-
-                    period_l.append(period)
-                    wcet_l.append(wcet)
-                    
-                ax.set_xlim([0,np.max(wcet_l)])
-                ax.set_ylim([0,np.max(period_l)])
-
-                title = "Task {0}, FU {1}".format(task, fu)
-                plt.title(title)
-                ax.scatter(wcet_l, period_l)
-
-                pdf.savefig()  # saves the current figure into a pdf page
-                plt.close(fig)
-
-
-def analyze_data(data):
-    results_ends = {}
-    results_starts = {}
-    results_exec = {}
-    results_wcrt = {}
-    results_scheds = {}
-    results_distanced = {}
-    results_distanced2 = {}
-
-    # Group by task
-    for task, task_group in data.groupby(["task"]):
-
-        print("Processing task {0}...".format(task))
-
-        results_ends[task] = {}
-        results_starts[task] = {}
-        results_exec[task] = {}
-        results_wcrt[task] = {}
-        results_scheds[task] = {}
-        results_distanced[task] = {}
-        results_distanced2[task] = {}
-
-        # Group by fu
-        for fu, fu_group in task_group.groupby(["fu"]):
-
-            task_end_jitter = []
-            task_start_jitter = []
-            task_exec_jitter = []
-            task_wcrt = []
-            task_scheds = [0, 0]
-            task_distanced = []
-            task_distanced2 = []
-
-            # Now group by rts
-            for rts, rts_group in fu_group.groupby(["rts"]):
-                # period
-                period = rts_group.iloc[0]["t"]
-                wcet = rts_group.iloc[0]["c"]
-
-                # finalization time for the instances
-                starts = rts_group.values[0][6:][::2]
-                ends = rts_group.values[0][6:][1::2]
-
-                # if the test has less than 300 samples, print a warning -- and compute only the first 30 samples
-                if ends[-1] == 0:
-                    ends = ends[:30]
-                    starts = starts[:30]
-                    print("warning: task {0} of rts {1} with 30 instances.".format(task, rts))
-
-                schedulable = 0
-                for x in range(len(ends)):
-                    abs_deadline = (x + 1) * period
-                    if abs_deadline < ends[x]:
-                        schedulable = 1
-                        break
-
-                if schedulable > 0:
-                    task_scheds[1] += 1
-                    continue
-
-                task_scheds[0] += 1
-
-                jitter_end = []
-                jitter_start = []
-                jitter_exec = []
-                jitter_wcrt = []
-                distance_to_d = []
-                distance_to_d2 = []
-
-                for idx in range(1, len(ends)):
-                    jitter_end.append((np.abs((ends[idx] - ends[idx - 1]) - period)) / period)
-                    jitter_start.append((np.abs((starts[idx] - starts[idx - 1]) - period)) / period)
-                    jitter_exec.append((np.abs(ends[idx] - starts[idx]) - wcet) / wcet)
-                    jitter_wcrt.append((np.abs(ends[idx] - ((idx - 1) * period))))                    
-                    
-                for idx in range(len(ends)):
-                    abs_deadline = (idx + 1) * period
-                    distance_to_d.append(np.abs(abs_deadline - ends[idx]) / period)
-                    distance_to_d2.append(np.abs(ends[idx] - (idx * period)) / period)
-
-                task_end_jitter.append(np.mean(jitter_end))
-                task_start_jitter.append(np.mean(jitter_start))
-                task_exec_jitter.append(np.mean(jitter_exec))
-                task_wcrt.append(np.mean(jitter_wcrt))
-                task_distanced.append(np.mean(distance_to_d))
-                task_distanced2.append(np.mean(distance_to_d2))
-
-            results_ends[task][fu] = (np.mean(task_end_jitter), np.max(task_end_jitter), np.min(task_end_jitter), np.std(task_end_jitter))
-            results_starts[task][fu] = (np.mean(task_start_jitter), np.max(task_start_jitter), np.min(task_start_jitter), np.std(task_start_jitter))
-            results_exec[task][fu] = (np.mean(task_exec_jitter), np.max(task_exec_jitter), np.min(task_exec_jitter), np.std(task_exec_jitter))
-            results_wcrt[task][fu] = (np.mean(task_wcrt), np.max(task_wcrt), np.min(task_wcrt), np.std(task_wcrt))
-            results_scheds[task][fu] = task_scheds
-            results_distanced[task][fu] = (np.mean(task_distanced), np.max(task_distanced), np.min(task_distanced), np.std(task_distanced))
-            results_distanced2[task][fu] = (np.mean(task_distanced2), np.max(task_distanced2), np.min(task_distanced2), np.std(task_distanced2))
-
-            #if task_scheds[0] >= 1000:
-            #    break
-
-    #for task, fu_results in results_scheds.items():
-    #    for fu, fur in fu_results.items():
-    #        print(task, fu, fur)                    
-
-    # return dict with results
-    return {"ends":results_ends, "starts":results_starts, "exec":results_exec, "wcrt":results_wcrt, "scheds":results_scheds, "distanced":results_distanced, "distanced2": results_distanced2}
-
-
-def graph2(results, fus, colors):
-    results_ends = results["ends"]
-    results_starts = results["starts"]
-    results_exec = results["exec"]
-    results_wcrt = results["wcrt"]
-    results_scheds = results["scheds"]
-    results_distanced = results["distanced"]
-    results_distanced2 = results["distanced2"]
-
-    fig, ax = plt.subplots(1, 1)
-    ax.margins(0.5, 0.5)
-    ax.set_xlabel('fu')
-    ax.set_ylabel('j')
-    ax.set_xlim([5, 100])
-    plt.xticks(fus, [str(fu) for fu in fus])
-    for task, taskr in results_ends.items():
-        fu_list = []
-        for fu, fur in sorted(taskr.items(), key=lambda f: f[0]):
-            fu_list.append(fur[0])
-        ax.plot(fus, fu_list, str(colors[task]), label="Task {0}".format(task))
-    ax.legend(numpoints=1, loc="best", prop={'size': 9})
-    plt.savefig("test5ends.pdf", bbox_inches="tight")
-    plt.close(fig)
-
-    fig, ax = plt.subplots(1, 1)
-    ax.margins(0.5, 0.5)
-    ax.set_xlabel('fu')
-    ax.set_ylabel('j')
-    ax.set_xlim([5, 100])
-    plt.xticks(fus, [str(fu) for fu in fus])
-    for task, taskr in results_starts.items():
-        fu_list = []
-        for fu, fur in sorted(taskr.items(), key=lambda f: f[0]):
-            fu_list.append(fur[0])
-        ax.plot(fus, fu_list, str(colors[task]), label="Task {0}".format(task))
-    ax.legend(numpoints=1, loc="best", prop={'size': 9})
-    plt.savefig("test5starts.pdf", bbox_inches="tight")
-    plt.close(fig)
-
-    fig, ax = plt.subplots(1, 1)
-    ax.margins(0.5, 0.5)
-    ax.set_xlabel('fu')
-    ax.set_ylabel('j')
-    ax.set_xlim([5, 100])
-    plt.xticks(fus, [str(fu) for fu in fus])
-    for task, taskr in results_exec.items():
-        fu_list = []
-        for fu, fur in sorted(taskr.items(), key=lambda f: f[0]):
-            fu_list.append(fur[0])
-        ax.plot(fus, fu_list, str(colors[task]), label="Task {0}".format(task))
-    ax.legend(numpoints=1, loc="best", prop={'size': 9})
-    plt.savefig("test5execs.pdf", bbox_inches="tight")
-    plt.close(fig)
-
-    fig, ax = plt.subplots(1, 1)
-    ax.margins(0.5, 0.5)
-    ax.set_xlabel('fu')
-    ax.set_ylabel('j')
-    ax.set_xlim([5, 100])
-    plt.xticks(fus, [str(fu) for fu in fus])
-    for task, taskr in results_wcrt.items():
-        fu_list = []
-        for fu, fur in sorted(taskr.items(), key=lambda f: f[0]):
-            fu_list.append(fur[0])
-        ax.plot(fus, fu_list, str(colors[task]), label="Task {0}".format(task))
-    ax.legend(numpoints=1, loc="best", prop={'size': 9})
-    plt.savefig("test5wcrt.pdf", bbox_inches="tight")
-    plt.close(fig)
+    
+    #
+    # Number of schedulable task-sets
+    #
+    total_schedulable_rts = df.groupby(['fu']).rts.nunique()
     
     fig, ax = plt.subplots(1, 1)
+    total_schedulable_rts.plot(ax=ax, kind="bar")    
     ax.margins(0.5, 0.5)
-    ax.set_xlabel('fu')
-    ax.set_ylabel('j')
+    ax.set_xlabel('uf')
+    ax.set_ylabel('\# of schedulable task-sets')
+    #ax.set_xlim([5, 100])    
+    #plt.xticks(fus, [str(fu) for fu in fus])
+    ax.set_ylim(bottom=0)  # set the bottom value after plotting the values, otherwise it goes from 0 to 1
+    plt.savefig("{0}-rts_by_fu.pdf".format(prefix), bbox_inches="tight")
+    plt.close(fig)    
+    
+    #
+    # Task mean ending time latency
+    #
+    fig, ax = plt.subplots(1, 1)
+    labels = []
+        
+    for task, task_group in df.groupby(['task']):
+        data = task_group.groupby(['fu'])['jitter_end'].agg({'mean':np.mean})
+        labels.append("Task {0}".format(task + 1))
+        data.plot(ax=ax)
+    
+    ax.margins(0.5, 0.5)
+    ax.set_xlabel('uf')
+    ax.set_ylabel('Mean ending latency')
     ax.set_xlim([5, 100])
-    plt.xticks(fus, [str(fu) for fu in fus])
-    for task, taskr in results_distanced.items():
-        fu_list = []
-        for fu, fur in sorted(taskr.items(), key=lambda f: f[0]):
-            fu_list.append(fur[0])
-        ax.plot(fus, fu_list, str(colors[task]), label="Task {0}".format(task))
-    ax.legend(numpoints=1, loc="best", prop={'size': 9})
-    plt.savefig("test5distanced.pdf", bbox_inches="tight")
+    plt.xticks(fus, [str(fu) for fu in fus])    
+    ax.set_ylim(bottom=0)
+    ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
+    plt.savefig("{0}-end.pdf".format(prefix), bbox_inches="tight")
     plt.close(fig)
     
+    #
+    # Task mean start time latency
+    #
+    fig, ax = plt.subplots(1, 1)
+    labels = []
+        
+    for task, task_group in df.groupby(['task']):
+        data = task_group.groupby(['fu'])['jitter_start'].agg({'mean':np.mean})
+        labels.append("Task {0}".format(task + 1))
+        data.plot(ax=ax)
+    
+    ax.margins(0.5, 0.5)
+    ax.set_xlabel('uf')
+    ax.set_ylabel('Mean start latency')
+    ax.set_xlim([5, 100])
+    plt.xticks(fus, [str(fu) for fu in fus])    
+    ax.set_ylim(bottom=0)
+    ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
+    plt.savefig("{0}-start.pdf".format(prefix), bbox_inches="tight")
+    plt.close(fig)
+    
+    #
+    # Task mean execution time
+    #
+    fig, ax = plt.subplots(1, 1)
+    labels = []
+        
+    for task, task_group in df.groupby(['task']):
+        data = task_group.groupby(['fu'])['jitter_exec'].agg({'mean':np.mean})
+        labels.append("Task {0}".format(task + 1))
+        data.plot(ax=ax)
+    
+    ax.margins(0.5, 0.5)
+    ax.set_xlabel('uf')
+    ax.set_ylabel('Mean execution time')
+    ax.set_xlim([5, 100])
+    plt.xticks(fus, [str(fu) for fu in fus])    
+    ax.set_ylim(bottom=0)
+    ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
+    plt.savefig("{0}-exec.pdf".format(prefix), bbox_inches="tight")
+    plt.close(fig)
+    
+    #
+    # Task mean wcrt time
+    #
+    fig, ax = plt.subplots(1, 1)
+    labels = []
+        
+    for task, task_group in df.groupby(['task']):
+        data = task_group.groupby(['fu'])['jitter_wcrt'].agg({'mean':np.mean})
+        labels.append("Task {0}".format(task + 1))
+        data.plot(ax=ax)
+    
+    ax.margins(0.5, 0.5)
+    ax.set_xlabel('uf')
+    ax.set_ylabel('Mean start latency')
+    ax.set_xlim([5, 100])
+    plt.xticks(fus, [str(fu) for fu in fus])    
+    ax.set_ylim(bottom=0)
+    ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
+    plt.savefig("{0}-wcrt.pdf".format(prefix), bbox_inches="tight")
+    plt.close(fig)
+    
+    #
+    # Task distance to deadline
+    #
+    fig, ax = plt.subplots(1, 1)
+    labels = []
+        
+    for task, task_group in df.groupby(['task']):
+        data = task_group.groupby(['fu'])['distanced2'].agg({'mean':np.mean})
+        labels.append("Task {0}".format(task + 1))
+        data.plot(ax=ax)
+        
+    ax.margins(0.5, 0.5)
+    ax.set_xlabel('uf')
+    ax.set_ylabel('Mean start latency')
+    ax.set_xlim([5, 100])
+    ax.set_ylim(bottom=0)
+    ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
+    plt.xticks(fus, [str(fu) for fu in fus])
+    plt.savefig("{0}-distanced2.pdf".format(prefix), bbox_inches="tight")
+    plt.close(fig)
+    
+    #
+    # Task distance to deadline -- one page per task
+    #
     from matplotlib.backends.backend_pdf import PdfPages
-    with PdfPages('test5distanced2.pdf') as pdf:            
-        for task, taskr in results_distanced2.items():
-            #fig, ax = plt.subplots(1, 1)
+    with PdfPages("{0}-distanced2-tasks.pdf".format(prefix)) as pdf:            
+        for task, task_group in df.groupby(['task']):
             plt.figure()
+            
+            data = task_group.groupby(['fu'])['distanced2'].agg({'mean':np.mean, 'max':np.max, 'min':np.min, 'std':np.std})
+            data.plot(ax=plt.gca(), y=['mean'], color="b", yerr="std")
+            data.plot(ax=plt.gca(), y=['max'], color="r")
+            data.plot(ax=plt.gca(), y=['min'], color="g")
+            
             plt.margins(0.5, 0.5)
-            plt.xlabel('fu')
-            plt.ylabel('j')
+            plt.xlabel('uf')
+            plt.ylabel('instance finalization')
             plt.xlim([5, 100])
             plt.ylim([0, 1])
             plt.xticks(fus, [str(fu) for fu in fus])
             plt.title('Task {0}'.format(task + 1))
-        
-            fu_list = []
-            fu_max_list = []
-            fu_min_list = []
-            e = []
-            
-            for fu, fur in sorted(taskr.items(), key=lambda f: f[0]):
-                fu_list.append(fur[0])
-                fu_max_list.append(fur[1])
-                fu_min_list.append(fur[2])
-                e.append(fur[3])
-            
-            plt.plot(fus, fu_list, "b", label="mean")
-            plt.plot(fus, fu_max_list, "r", label="max")
-            plt.plot(fus, fu_min_list, "g", label="min")
-            plt.errorbar(fus, fu_list, e, linestyle='None')
-            
-            plt.legend(numpoints=1, loc="best", prop={'size': 9})            
+            plt.legend(['Mean','Max','Min'], numpoints=1, loc="best", prop={'size': 9})            
             pdf.savefig()  # saves the current figure into a pdf page
-            plt.close()                    
-
-    fig, ax = plt.subplots(1, 1)
-    ax.margins(0.5, 0.5)
-    ax.set_xlabel('fu')
-    ax.set_ylabel('# of schedulable systems')
-    ax.set_xlim([0, 100])
-    plt.xticks(fus, [str(fu) for fu in fus])
-    for task, taskr in results_scheds.items():
-        fu_list = []
-        for fu, fu_scheds in sorted(taskr.items(), key=lambda f: f[0]):
-            fu_list.append(fu_scheds[0])
-        ax.plot(fus, fu_list, str(colors[task]), label="Task {0}".format(task))
-    ax.legend(numpoints=1, loc="best", prop={'size': 9})
-    plt.savefig("test5scheds.pdf", bbox_inches="tight")
-    plt.close(fig)
-
-
-def analyze_task(data):
-    for fu, fu_group in data.groupby(["fu"]):
-        print("fu ", fu)
-        
-        task_periods = []
-        
-        for task, task_group in fu_group.groupby(["task"]):
-            wcet_l = []
-            wcrt_l = []
-            wcrt_lmax = []
-            periods_list = []
-
-            for rts, rts_group in task_group.groupby(["rts"]):
-                # period
-                period = rts_group.iloc[0]["t"]
-                wcet = rts_group.iloc[0]["c"]
-
-                # finalization time for the instances
-                starts = rts_group.values[0][6:][::2]
-                ends = rts_group.values[0][6:][1::2]
-
-                schedulable = 0
-                for x in range(len(ends)):
-                    abs_deadline = (x + 1) * period
-                    if abs_deadline < ends[x]:
-                        schedulable = 1
-                        break
-
-                if schedulable > 0:
-                    #task_scheds[1] += 1
-                    continue                
-
-                if ends[-1] == 0:
-                    ends = ends[:30]
-                    starts = starts[:30]
-
-                wcrt_l2 = []
-                for idx in range(1, len(ends)):
-                    wcrt_l2.append((np.abs(ends[idx] - ((idx - 1) * period))))
-
-                wcet_l.append(wcet)
-                wcrt_l.append(np.mean(wcrt_l2))
-                wcrt_lmax.append(np.max(wcrt_l2))
-                periods_list.append(period)
-
-            print("Task ", task, len(wcet_l), " -- ", np.mean(wcet_l), np.max(wcet_l), np.std(wcet_l), " -- ", np.mean(wcrt_l), np.max(wcrt_lmax), "--", np.mean(periods_list), np.max(periods_list))
-
+            plt.close() 
+    
+    #
+    # Utilization factors per task
+    #    
+    with PdfPages("{0}-fus.pdf".format(prefix)) as pdf:
+        for task, task_group in df.groupby(['task']):
+            plt.figure()
+            
+            data = task_group.groupby(['fu'])['task_fu'].agg({'mean':np.mean, 'max':np.max, 'min':np.min, 'std':np.std})
+            data.plot(ax=plt.gca(), y=['mean'], color="b", yerr="std")
+            data.plot(ax=plt.gca(), y=['max'], color="r")
+            data.plot(ax=plt.gca(), y=['min'], color="g")
+            
+            plt.margins(0.5, 0.5)
+            plt.xlabel('rts uf (\%)')
+            plt.ylabel('task uf (\%)')
+            plt.xlim([5, 100])
+            plt.xticks(fus, [str(fu) for fu in fus])
+            plt.title('Task {0}'.format(task + 1))
+            plt.ylim(bottom=0)
+            plt.legend(['Mean','Max','Min'], numpoints=1, loc="best", prop={'size': 9})            
+            pdf.savefig()  # saves the current figure into a pdf page
+            plt.close()
+                    
 
 def get_args():
     """ Command line arguments """
-    parser = ArgumentParser(description="Generate dump file")
-    parser.add_argument("dumpfiles", nargs="*", help="Dump files", type=str)
+    parser = ArgumentParser(description="Process data file")
+    parser.add_argument("dumpfile", help="Data file", type=str)
+    parser.add_argument("prefix", help="prefix for generated files", type=str)
+    parser.add_argument("--dumpfiles", nargs="+", help="Dump files", type=str)
     return parser.parse_args()
 
 
 def main():
-    #dump_file = "n5.dump"  # test results
     args = get_args()
 
-    dump_files_dataframes = []
+    if args.dumpfiles:
+        if os.path.isfile(args.dumpfile):
+            print("{0}: File already exists.".format(args.dump_file))
+            sys.exit(1)
     
-    for dump_file in [dump_file for dump_file in args.dumpfiles]:
-        if os.path.isfile(dump_file):
-            with open(dump_file, "rb") as infile:
-                dump_files_dataframes.append(pickle.load(infile))
-        else:
-            print("{0}: file not found.".format(dump_file))
+        dump_files_dataframes = []
+        
+        for dump_file in [dump_file for dump_file in args.dumpfiles]:
+            if os.path.isfile(dump_file):
+                with open(dump_file, "rb") as infile:
+                    dump_files_dataframes.append(pickle.load(infile))
+            else:
+                print("{0}: file not found.".format(dump_file))
 
-    fus = range(10, 100, 5)
-    colors = ["r", "g", "b", "k", "y", "m", "c"]
-
-    data = pd.concat(dump_files_dataframes)
+        data = pd.concat(dump_files_dataframes)
+        df = analyze_data(data)
+        
+        with open(args.dumpfile, "wb") as outfile:
+            pickle.dump(df, outfile)
+    else:
+        if not os.path.isfile(args.dumpfile):
+            print("{0}: File not found.".format(args.dump_file))
+            sys.exit(1)
+        with open(args.dumpfile, "rb") as infile:
+            df = pickle.load(infile)
     
-    #result = analyze_data(data)
-
-    #graph2(result, fus, colors)
-    
-    #analyze_task(data)
-    
-    analyze_c_t(data)
+    plot_results(df, args.prefix)
 
 
 if __name__ == '__main__':
