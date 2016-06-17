@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 import pickle
 import pandas as pd
@@ -259,7 +260,7 @@ def main():
 
     if args.dumpfiles:
         if os.path.isfile(args.dumpfile):
-            print("{0}: File already exists.".format(args.dump_file))
+            print("{0}: File already exists.".format(args.dumpfile))
             sys.exit(1)
     
         dump_files_dataframes = []
