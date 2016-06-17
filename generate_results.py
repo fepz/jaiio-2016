@@ -235,6 +235,7 @@ def plot_results(df, prefix):
             #
             plt.figure()
 
+            data = task_group.groupby(['fu'])
             data['distanced2'].agg({'mean': np.mean, 'std': np.std}).plot(ax=plt.gca(), y=['mean'], color="b", yerr="std")
             data['distanced2_max'].max().plot(ax=plt.gca(), color="r")
             data['distanced2_min'].max().plot(ax=plt.gca(), color="g")
