@@ -75,8 +75,10 @@ def analyze_data(data):
     
     
 def plot_results(df, prefix):
+    df = df[df['fu'] < 95]
+
     # Plots ###
-    fus = range(10, 100, 5)
+    fus = range(10, 95, 5)
     colors = ["r", "g", "b", "k", "y", "m", "c"]
 
     plt.rc('text', usetex=True)
@@ -110,7 +112,7 @@ def plot_results(df, prefix):
     ax.margins(0.5, 0.5)
     ax.set_xlabel('uf')
     ax.set_ylabel('Mean ending latency')
-    ax.set_xlim([5, 100])
+    ax.set_xlim([5, 95])
     plt.xticks(fus, [str(fu) for fu in fus])    
     ax.set_ylim(bottom=0)
     ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
@@ -131,7 +133,7 @@ def plot_results(df, prefix):
     ax.margins(0.5, 0.5)
     ax.set_xlabel('uf')
     ax.set_ylabel('Mean start latency')
-    ax.set_xlim([5, 100])
+    ax.set_xlim([5, 95])
     plt.xticks(fus, [str(fu) for fu in fus])    
     ax.set_ylim(bottom=0)
     ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
@@ -152,7 +154,7 @@ def plot_results(df, prefix):
     ax.margins(0.5, 0.5)
     ax.set_xlabel('uf')
     ax.set_ylabel('Mean execution time')
-    ax.set_xlim([5, 100])
+    ax.set_xlim([5, 95])
     plt.xticks(fus, [str(fu) for fu in fus])    
     ax.set_ylim(bottom=0)
     ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
@@ -173,7 +175,7 @@ def plot_results(df, prefix):
     ax.margins(0.5, 0.5)
     ax.set_xlabel('uf')
     ax.set_ylabel('Mean start latency')
-    ax.set_xlim([5, 100])
+    ax.set_xlim([5, 95])
     plt.xticks(fus, [str(fu) for fu in fus])    
     ax.set_ylim(bottom=0)
     ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
@@ -193,10 +195,10 @@ def plot_results(df, prefix):
         data.plot(ax=ax)
         
     ax.margins(0.5, 0.5)
-    ax.set_xlabel('uf')
-    ax.set_ylabel('Mean start latency')
-    ax.set_xlim([5, 100])
-    ax.set_ylim(bottom=0)
+    ax.set_xlabel('UF')
+    ax.set_ylabel('Normalized task finalization time')
+    ax.set_xlim([5, 95])
+    ax.set_ylim([0, 1])
     ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
     plt.xticks(fus, [str(fu) for fu in fus])
     plt.savefig("{0}-distanced2.pdf".format(prefix), bbox_inches="tight")
@@ -220,12 +222,12 @@ def plot_results(df, prefix):
             data.plot(ax=plt.gca(), y=['min'], color="g")
             
             plt.margins(0.5, 0.5)
-            plt.xlabel('uf')
-            plt.ylabel('instance finalization')
-            plt.xlim([5, 100])
+            plt.xlabel('UF')
+            plt.ylabel('Normalized task finalization time')
+            plt.xlim([5, 95])
             plt.ylim([0, 1])
             plt.xticks(fus, [str(fu) for fu in fus])
-            plt.title('Task {0}'.format(task + 1))
+            plt.title('Task {0} - Mean'.format(task + 1))
             plt.legend(['Mean','Max','Min'], numpoints=1, loc="best", prop={'size': 9})            
             pdf.savefig()  # saves the current figure into a pdf page
             plt.close()
@@ -236,17 +238,17 @@ def plot_results(df, prefix):
             plt.figure()
 
             data = task_group.groupby(['fu'])
-            data['distanced2'].agg({'mean': np.mean, 'std': np.std}).plot(ax=plt.gca(), y=['mean'], color="b", yerr="std")
+            data['distanced2'].max().plot(ax=plt.gca(), color="b")
             data['distanced2_max'].max().plot(ax=plt.gca(), color="r")
             data['distanced2_min'].max().plot(ax=plt.gca(), color="g")
 
             plt.margins(0.5, 0.5)
-            plt.xlabel('uf')
-            plt.ylabel('instance finalization')
-            plt.xlim([5, 100])
+            plt.xlabel('UF')
+            plt.ylabel('Normalized task finalization time')
+            plt.xlim([5, 95])
             plt.ylim([0, 1])
             plt.xticks(fus, [str(fu) for fu in fus])
-            plt.title('Task {0}'.format(task + 1))
+            plt.title('Task {0} - Max'.format(task + 1))
             plt.legend(['Mean', 'Max', 'Min'], numpoints=1, loc="best", prop={'size': 9})
             pdf.savefig()  # saves the current figure into a pdf page
             plt.close()
@@ -314,6 +316,11 @@ def main():
             df = pickle.load(infile)
     
     plot_results(df, args.prefix)
+    
+    for task, task_group in df.groupby(['task']):
+        data = task_group.groupby(['fu'])['jitter_wcrt'].agg({'mean':np.mean, 'max':np.max, 'min':np.min})    
+        print(task)
+        print(data)
 
 
 if __name__ == '__main__':
