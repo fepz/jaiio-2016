@@ -1,11 +1,10 @@
 import os
+import sys
 import numpy as np
 import pickle
 import pandas as pd
 import matplotlib.pyplot as plt
-from collections import defaultdict
 from argparse import ArgumentParser
-from tabulate import tabulate
 
 
 def analyze_data(data):
@@ -56,11 +55,18 @@ def analyze_data(data):
             distance_to_d2.append(np.abs(ends[idx] - (idx * period)) / period)
 
         # Add task's results to the task-set result list
-        return pd.Series([np.mean(jitter_end), np.mean(jitter_start), np.mean(jitter_exec), np.mean(jitter_wcrt), 
-                np.mean(distance_to_d), np.mean(distance_to_d2), wcet / period, task_schedulable, task_valid_fu])
+        return pd.Series([np.mean(jitter_end), np.mean(jitter_start), np.mean(jitter_exec), np.mean(jitter_wcrt),
+                          np.mean(distance_to_d),
+                          np.mean(distance_to_d2), np.max(distance_to_d2), np.min(distance_to_d2), np.std(distance_to_d2),
+                          wcet / period, task_schedulable, task_valid_fu])
+
+    # New columns
+    new_cols = ['jitter_end', 'jitter_start', 'jitter_exec', 'jitter_wcrt', 'distanced',
+                'distanced2', 'distanced2_max', 'distanced2_min', 'distanced2_std',
+                'task_fu', 'task_schedulable', 'task_valid_fu']
 
     # Calculate task values and insert as new columns
-    data[['jitter_end', 'jitter_start', 'jitter_exec', 'jitter_wcrt', 'distanced', 'distanced2', 'task_fu', 'task_schedulable', 'task_valid_fu']] = data.apply(calculate_task_data, axis=1)
+    data[new_cols] = data.apply(calculate_task_data, axis=1)
     
     # Filter task-sets that are not schedulable and have valid task uf
     df = data.groupby(['fu', 'rts']).filter(lambda x: (sum(x['task_schedulable']) == 0) and (sum(x['task_valid_fu']) == 0))
@@ -86,8 +92,6 @@ def plot_results(df, prefix):
     ax.margins(0.5, 0.5)
     ax.set_xlabel('uf')
     ax.set_ylabel('\# of schedulable task-sets')
-    #ax.set_xlim([5, 100])    
-    #plt.xticks(fus, [str(fu) for fu in fus])
     ax.set_ylim(bottom=0)  # set the bottom value after plotting the values, otherwise it goes from 0 to 1
     plt.savefig("{0}-rts_by_fu.pdf".format(prefix), bbox_inches="tight")
     plt.close(fig)    
@@ -205,7 +209,7 @@ def plot_results(df, prefix):
         for task, task_group in df.groupby(['task']):
             plt.figure()
             
-            data = task_group.groupby(['fu'])['distanced2'].agg({'mean':np.mean, 'max':np.max, 'min':np.min, 'std':np.std})
+            data = task_group.groupby(['fu'])['distanced2'].agg({'mean': np.mean, 'max': np.max, 'min': np.min, 'std': np.std})
             data.plot(ax=plt.gca(), y=['mean'], color="b", yerr="std")
             data.plot(ax=plt.gca(), y=['max'], color="r")
             data.plot(ax=plt.gca(), y=['min'], color="g")
@@ -219,8 +223,27 @@ def plot_results(df, prefix):
             plt.title('Task {0}'.format(task + 1))
             plt.legend(['Mean','Max','Min'], numpoints=1, loc="best", prop={'size': 9})            
             pdf.savefig()  # saves the current figure into a pdf page
-            plt.close() 
-    
+            plt.close()
+
+            # ---
+
+            plt.figure()
+
+            data['distanced2'].agg({'mean': np.mean, 'std': np.std}).plot(ax=plt.gca(), y=['mean'], color="b", yerr="std")
+            data['distanced2_max'].max().plot(ax=plt.gca(), color="r")
+            data['distanced2_min'].max().plot(ax=plt.gca(), color="g")
+
+            plt.margins(0.5, 0.5)
+            plt.xlabel('uf')
+            plt.ylabel('instance finalization')
+            plt.xlim([5, 100])
+            plt.ylim([0, 1])
+            plt.xticks(fus, [str(fu) for fu in fus])
+            plt.title('Task {0}'.format(task + 1))
+            plt.legend(['Mean', 'Max', 'Min'], numpoints=1, loc="best", prop={'size': 9})
+            pdf.savefig()  # saves the current figure into a pdf page
+            plt.close()
+
     #
     # Utilization factors per task
     #    
