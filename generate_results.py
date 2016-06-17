@@ -181,7 +181,8 @@ def plot_results(df, prefix):
     plt.close(fig)
     
     #
-    # Task distance to deadline
+    # Normalized task distance to deadline -- all tasks in one graph.
+    # If the value approach 1, it means that the task instances finalizes near or at its absolute deadlines.
     #
     fig, ax = plt.subplots(1, 1)
     labels = []
@@ -202,11 +203,15 @@ def plot_results(df, prefix):
     plt.close(fig)
     
     #
-    # Task distance to deadline -- one page per task
+    # Normalized task distance to deadline -- one task per page.
+    # If the value approach 1, it means that the task instances finalizes near or at its absolute deadlines.
     #
     from matplotlib.backends.backend_pdf import PdfPages
     with PdfPages("{0}-distanced2-tasks.pdf".format(prefix)) as pdf:            
         for task, task_group in df.groupby(['task']):
+            #
+            # Plot the average task distance to deadline, jointly with the maximum and minimum *average* distance per uf.
+            #
             plt.figure()
             
             data = task_group.groupby(['fu'])['distanced2'].agg({'mean': np.mean, 'max': np.max, 'min': np.min, 'std': np.std})
@@ -225,8 +230,9 @@ def plot_results(df, prefix):
             pdf.savefig()  # saves the current figure into a pdf page
             plt.close()
 
-            # ---
-
+            #
+            # Plot the mean task distance to deadline, with the maximum and minimum distance to deadline per uf.
+            #
             plt.figure()
 
             data['distanced2'].agg({'mean': np.mean, 'std': np.std}).plot(ax=plt.gca(), y=['mean'], color="b", yerr="std")
@@ -245,13 +251,13 @@ def plot_results(df, prefix):
             plt.close()
 
     #
-    # Utilization factors per task
+    # Average, minimum and maximum task utilization factor.
     #    
     with PdfPages("{0}-fus.pdf".format(prefix)) as pdf:
         for task, task_group in df.groupby(['task']):
             plt.figure()
             
-            data = task_group.groupby(['fu'])['task_fu'].agg({'mean':np.mean, 'max':np.max, 'min':np.min, 'std':np.std})
+            data = task_group.groupby(['fu'])['task_fu'].agg({'mean': np.mean, 'max': np.max, 'min': np.min, 'std': np.std})
             data.plot(ax=plt.gca(), y=['mean'], color="b", yerr="std")
             data.plot(ax=plt.gca(), y=['max'], color="r")
             data.plot(ax=plt.gca(), y=['min'], color="g")
