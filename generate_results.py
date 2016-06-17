@@ -46,13 +46,13 @@ def analyze_data(data):
         for idx in range(1, len(ends)):
             jitter_end.append((np.abs((ends[idx] - ends[idx - 1]) - period)) / period)
             jitter_start.append((np.abs((starts[idx] - starts[idx - 1]) - period)) / period)
-            jitter_exec.append((np.abs(ends[idx] - starts[idx]) - wcet) / wcet)
-            jitter_wcrt.append((np.abs(ends[idx] - ((idx - 1) * period))))                    
             
         for idx in range(len(ends)):
             abs_deadline = (idx + 1) * period
             distance_to_d.append(np.abs(abs_deadline - ends[idx]) / period)
             distance_to_d2.append(np.abs(ends[idx] - (idx * period)) / period)
+            jitter_exec.append((np.abs(ends[idx] - starts[idx]) - wcet) / wcet)
+            jitter_wcrt.append(np.abs(ends[idx] - (idx * period)))
 
         # Add task's results to the task-set result list
         return pd.Series([np.mean(jitter_end), np.mean(jitter_start), np.mean(jitter_exec), np.mean(jitter_wcrt),
