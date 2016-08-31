@@ -107,7 +107,9 @@ def plot_results(df, prefix):
     for task, task_group in df.groupby(['task']):
         data = task_group.groupby(['fu'])['jitter_end'].agg({'mean':np.mean})
         labels.append("Task {0}".format(task + 1))
-        data.plot(ax=ax)
+        data.plot(ax=ax, legend=False, color='k')
+        if task > 0:
+            ax.text(91, data['mean'].iloc[-1], "$\displaystyle\\tau_{{{0}}}$".format(task + 1))
     
     ax.margins(0.5, 0.5)
     ax.set_xlabel('uf')
@@ -115,7 +117,7 @@ def plot_results(df, prefix):
     ax.set_xlim([5, 95])
     plt.xticks(fus, [str(fu) for fu in fus])    
     ax.set_ylim(bottom=0)
-    ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
+    #ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
     plt.savefig("{0}-end.pdf".format(prefix), bbox_inches="tight")
     plt.close(fig)
     
@@ -128,7 +130,9 @@ def plot_results(df, prefix):
     for task, task_group in df.groupby(['task']):
         data = task_group.groupby(['fu'])['jitter_start'].agg({'mean':np.mean})
         labels.append("Task {0}".format(task + 1))
-        data.plot(ax=ax)
+        data.plot(ax=ax, legend=False, color='k')
+        if task > 0:
+            ax.text(91, data['mean'].iloc[-1], "$\displaystyle\\tau_{{{0}}}$".format(task + 1))
     
     ax.margins(0.5, 0.5)
     ax.set_xlabel('uf')
@@ -136,7 +140,7 @@ def plot_results(df, prefix):
     ax.set_xlim([5, 95])
     plt.xticks(fus, [str(fu) for fu in fus])    
     ax.set_ylim(bottom=0)
-    ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
+    #ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
     plt.savefig("{0}-start.pdf".format(prefix), bbox_inches="tight")
     plt.close(fig)
     
@@ -149,7 +153,9 @@ def plot_results(df, prefix):
     for task, task_group in df.groupby(['task']):
         data = task_group.groupby(['fu'])['jitter_exec'].agg({'mean':np.mean})
         labels.append("Task {0}".format(task + 1))
-        data.plot(ax=ax)
+        data.plot(ax=ax, legend=False, color='k')
+        if task > 0:
+            ax.text(91, data['mean'].iloc[-1], "$\displaystyle\\tau_{{{0}}}$".format(task + 1))
     
     ax.margins(0.5, 0.5)
     ax.set_xlabel('uf')
@@ -157,7 +163,7 @@ def plot_results(df, prefix):
     ax.set_xlim([5, 95])
     plt.xticks(fus, [str(fu) for fu in fus])    
     ax.set_ylim(bottom=0)
-    ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
+    #ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
     plt.savefig("{0}-exec.pdf".format(prefix), bbox_inches="tight")
     plt.close(fig)
     
@@ -170,7 +176,8 @@ def plot_results(df, prefix):
     for task, task_group in df.groupby(['task']):
         data = task_group.groupby(['fu'])['jitter_wcrt'].agg({'mean':np.mean})
         labels.append("Task {0}".format(task + 1))
-        data.plot(ax=ax)
+        data.plot(ax=ax, legend=False, color='k')
+        ax.text(91, data['mean'].iloc[-1], "$\displaystyle\\tau_{{{0}}}$".format(task + 1))
     
     ax.margins(0.5, 0.5)
     ax.set_xlabel('uf')
@@ -178,7 +185,7 @@ def plot_results(df, prefix):
     ax.set_xlim([5, 95])
     plt.xticks(fus, [str(fu) for fu in fus])    
     ax.set_ylim(bottom=0)
-    ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
+    #ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
     plt.savefig("{0}-wcrt.pdf".format(prefix), bbox_inches="tight")
     plt.close(fig)
     
@@ -192,14 +199,15 @@ def plot_results(df, prefix):
     for task, task_group in df.groupby(['task']):
         data = task_group.groupby(['fu'])['distanced2'].agg({'mean':np.mean})
         labels.append("Task {0}".format(task + 1))
-        data.plot(ax=ax)
+        data.plot(ax=ax, legend=False, color='k')
+        ax.text(91, data['mean'].iloc[-1], "$\displaystyle\\tau_{{{0}}}$".format(task + 1))
         
     ax.margins(0.5, 0.5)
     ax.set_xlabel('UF')
     ax.set_ylabel('Normalized task finalization time')
     ax.set_xlim([5, 95])
     ax.set_ylim([0, 1])
-    ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
+    #ax.legend(labels, numpoints=1, loc="best", prop={'size': 9})
     plt.xticks(fus, [str(fu) for fu in fus])
     plt.savefig("{0}-distanced2.pdf".format(prefix), bbox_inches="tight")
     plt.close(fig)
@@ -314,14 +322,39 @@ def main():
             sys.exit(1)
         with open(args.dumpfile, "rb") as infile:
             df = pickle.load(infile)
+            
+    #plot_results(df, args.prefix)
     
-    plot_results(df, args.prefix)
+    # Create a Pandas Excel writer using XlsxWriter as the engine.
+    writer = pd.ExcelWriter('{0}_results.xlsx'.format(args.prefix), engine='xlsxwriter')
     
-    for task, task_group in df.groupby(['task']):
-        data = task_group.groupby(['fu'])['jitter_wcrt'].agg({'mean':np.mean, 'max':np.max, 'min':np.min})    
-        print(task)
-        print(data)
-
+    # We apply this functions to the selected columns -- there must be a better way, but this is quick (although a bit dirty)
+    functions_to_apply = [np.mean, np.max, np.min, np.std]
+    col_funcs_dict = {'jitter_start': functions_to_apply, 'jitter_end': functions_to_apply, 'jitter_exec': functions_to_apply,
+                      'jitter_wcrt': functions_to_apply, 'distanced2': functions_to_apply}
+    df['task'] = df['task'] + 1
+    data = df.groupby(['task', 'fu']).agg(col_funcs_dict)
+    data.to_excel(writer, sheet_name='All')
+    
+    # i know... this is sad (but quick)
+    data = df.groupby(['task', 'fu'], as_index=False)['jitter_start'].agg([np.mean, np.max, np.min, np.std]).stack().unstack(1).unstack(0).stack(1)
+    data.to_excel(writer, sheet_name='start')
+    
+    data = df.groupby(['task', 'fu'], as_index=False)['jitter_end'].agg([np.mean, np.max, np.min, np.std]).stack().unstack(1).unstack(0).stack(1)
+    data.to_excel(writer, sheet_name='end')
+    
+    data = df.groupby(['task', 'fu'], as_index=False)['distanced2'].agg([np.mean, np.max, np.min, np.std]).stack().unstack(1).unstack(0).stack(1)
+    data.to_excel(writer, sheet_name='distanced2')
+    
+    data = df.groupby(['task', 'fu'], as_index=False)['jitter_wcrt'].agg([np.mean, np.max, np.min, np.std]).stack().unstack(1).unstack(0).stack(1)
+    data.to_excel(writer, sheet_name='wcrt')
+    
+    data = df.groupby(['task', 'fu'], as_index=False)['jitter_exec'].agg([np.mean, np.max, np.min, np.std]).stack().unstack(1).unstack(0).stack(1)
+    data.to_excel(writer, sheet_name='exec')
+    
+    # Close the Pandas Excel writer and output the Excel file.
+    writer.save()
+        
 
 if __name__ == '__main__':
     main()
