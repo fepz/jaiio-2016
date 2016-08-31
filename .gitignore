@@ -4,3 +4,5 @@ pdf/*
 *.pdf
 *.png
 *.txt
+*.xlsx
+*.xls
